@@ -1,20 +1,24 @@
 import tensorflow as tf
 import numpy as np
 
-class SparseWeights2D(tf.keras.layers.Layer):
-    def __init__(self, module, sparsity):
-        super(SparseWeights2D, self).__init__()
-        self.module = module
-        self.sparsity = sparsity
+class SparseConv2D(tf.keras.layers.Conv2D):
+    def __init__(self, filters, kernel_size, weightSparcity=0.5, strides=(1,1), padding="SAME",
+            dilation_rate=(1,1), use_bias=True, use_batch_norm=False):
+        
+        super(SparseConv2D, self).__init__(filters, kernel_size, strides=strides,
+                padding= padding, dilation_rate=dilation_rate, use_bias=use_bias)
 
-    def build(self, input_shape):
-        if not self.module.built:
-            self.module.build(input_shape)
-        self.updateWeights()
-        super(SparseWeights2D, self).build(input_shape)
+        assert 0 < weightSparcity < 1
+        self.sparsity = weightSparcity
+
+
+
+    #def build(self, input_shape):
+    #    super(SparseConv2D, self).build(input_shape)
+    #    #self.updateWeights()
 
     def updateWeights(self):
-        K = self.module.kernel
+        K = self.kernel
         kernel_size1, kernel_size2, in_channels, out_channels = K.shape
 
         filter_size = kernel_size1*kernel_size2*in_channels
@@ -27,28 +31,29 @@ class SparseWeights2D(tf.keras.layers.Layer):
         w = np.ones(K.shape).reshape(-1, out_channels)
         w[inputIndices, outputIndices] = 0.0
         w = w.reshape(K.shape)
-        self.module.kernel = K*w
+        self.kernel = K*w
 
     def call(self, inputs, training=True):
         if training:
             self.updateWeights()
-        return self.module(inputs)
+        return super(SparseConv2D, self).call(inputs)
 
 
-class SparseWeights1D(tf.keras.layers.Layer):
-    def __init__(self, module, sparsity):
-        super(SparseWeights1D, self).__init__()
-        self.module = module
-        self.sparsity = sparsity
-    def build(self, input_shape):
-        if not self.module.built:
-            self.module.build(input_shape)
+class SparseDense(tf.keras.layers.Dense):
+    def __init__(self, units, weightSparcity=0.5, use_bias=True):
+        super(SparseDense, self).__init__(units, use_bias=use_bias)
+        assert 0<weightSparcity<1
+        self.sparsity = weightSparcity
 
-        self.updateWeights()
-        super(SparseWeights1D, self).build(input_shape)
+    #def build(self, input_shape):
+    #    if not self.module.built:
+    #        self.module.build(input_shape)
+
+    #    self.updateWeights()
+    #    super(SparseWeights1D, self).build(input_shape)
 
     def updateWeights(self):
-        K = self.module.kernel
+        K = self.kernel
         in_units, out_units = K.shape
         #Total number of zeros in the filter
         numZeros = int(round((1.0-self.sparsity)*in_units))
@@ -58,9 +63,9 @@ class SparseWeights1D(tf.keras.layers.Layer):
         w = np.ones(K.shape)
         w[inputIndices, outputIndices] = 0.0
 
-        self.module.kernel = K*w
+        self.kernel = K*w
 
     def call(self, inputs, training=True):
         if training:
             self.updateWeights()
-        return self.module(inputs)
+        return super(SparseDense, self).call(inputs)
