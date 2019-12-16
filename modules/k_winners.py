@@ -13,8 +13,17 @@ class KWinners(tf.keras.layers.Layer):
         self.boostStrengthFactor = boostStrengthFactor
         self.dutyCyclePeriod = dutyCyclePeriod
         self.dutyCycle = None
-        self.dutyCycle = tf.zeros((self.channels))
+        
         self.learningIterations = 0
+
+    def build(self, input_shape):
+        self.dutyCycle = self.add_weight(name='dutyCycle',
+                                         shape=(self.channels),
+                                         initializer=tf.keras.initializers.Constant(0.0),
+                                         trainable=False)
+
+
+        super(KWinners, self).build(input_shape)
 
     def call(self, inputs, training=True):
         total_nrof_neurons = self.channels
@@ -28,10 +37,11 @@ class KWinners(tf.keras.layers.Layer):
 
             self.k = min(int(self.kInferenceFactor*self.k), total_nrof_neurons)
 
+
         x = self.get_kwinners(inputs) 
 
         if training:
-            self._updateDutyCycle(x)
+           self._updateDutyCycle(x)
 
         return x
 
@@ -39,52 +49,57 @@ class KWinners(tf.keras.layers.Layer):
 
         @tf.custom_gradient
         def _get_kwinners(inputs):
-        
-            boosted = inputs 
-            input_shape = inputs.get_shape().as_list()
 
-            if len(input_shape)>3:
-                num_units = np.prod(input_shape[1:])
-            else:
-                num_units = input_shape[-1]
+            with tf.name_scope("get_kwinners"):
         
-            if self.boostStrength != 0.0:
-                # target duty ccyle is the percentage of active units
-                target_duty_cycle = float(self.k)/num_units
-                boostFactors = tf.exp((target_duty_cycle-self.dutyCycle)*self.boostStrength)
-                boosted = inputs*boostFactors
+                boosted = inputs 
+                input_shape = inputs.get_shape().as_list()
+
+                if len(input_shape)>3:
+                    num_units = np.prod(input_shape[1:])
+                else:
+                    num_units = input_shape[-1]
+        
+                if self.boostStrength != 0.0:
+                    # target duty ccyle is the percentage of active units
+                    target_duty_cycle = float(self.k)/num_units
+                    boostFactors = tf.exp((target_duty_cycle-self.dutyCycle)*self.boostStrength)
+                    boosted = inputs*boostFactors
          
-            if len(boosted.shape)>3:
-                boosted = tf.reshape(boosted, (input_shape[0],-1))
-            boosted_shape = boosted.shape    
+                if len(boosted.shape)>3:
+                    boosted = tf.reshape(boosted, (input_shape[0],-1))
+                boosted_shape = boosted.shape    
 
-            values, indices = tf.math.top_k(boosted, k=self.k, sorted=False)
-            indices_grid = tf.meshgrid(*[tf.range(d) for d in (tf.unstack(
-                boosted_shape[:-1]) + [self.k])], indexing='ij')
+                values, indices = tf.math.top_k(boosted, k=self.k, sorted=False)
+
+
+                indices_grid = tf.meshgrid(*[tf.range(d) for d in (tf.unstack(
+                    boosted_shape[:-1]) + [self.k])], indexing='ij')
         
-            indices_grid = tf.stack(indices_grid[:-1] + [indices], axis=-1)
-            full_indices = tf.reshape(indices_grid, [-1, boosted_shape.ndims])
-            values = tf.reshape(values, [-1])
+                indices_grid = tf.stack(indices_grid[:-1] + [indices], axis=-1)
+                full_indices = tf.reshape(indices_grid, [-1, boosted_shape.ndims])
+                values = tf.reshape(values, [-1])
         
-            mask_st = tf.SparseTensor(indices=tf.cast(
-              full_indices, dtype=tf.int64), values=tf.ones_like(values), dense_shape=(input_shape[0],num_units))
-            mask = tf.sparse.to_dense(tf.sparse.reorder(mask_st))
-            mask = tf.reshape(mask, input_shape)
-            result = inputs*mask
+                mask_st = tf.SparseTensor(indices=tf.cast(
+                  full_indices, dtype=tf.int64), values=tf.ones_like(values), dense_shape=(input_shape[0],num_units))
+                boolean_mask = tf.sparse.to_dense(tf.sparse.reorder(mask_st))
+                boolean_mask = tf.reshape(boolean_mask, input_shape)
+                result = inputs*boolean_mask
         
-            def grad_fn(*grad_ys):
-                return grad_ys*mask
+            def grad_fn(grad_ys):
+                return grad_ys*boolean_mask
         
             return result, grad_fn
 
         return _get_kwinners(inputs)
-
+    
     def _updateDutyCycle(self,x):
         batch_size = x.shape[0]
         self.learningIterations += batch_size
                                                                             
         period = min(self.dutyCyclePeriod, self.learningIterations)
-        self.dutyCycle = tf.multiply(self.dutyCycle, (period - batch_size))
+        dutyCycle = self.dutyCycle
+        dutyCycle = tf.multiply(self.dutyCycle, (period - batch_size))
 
         scaleFactor = 1.0
         ax = [0]
@@ -93,8 +108,8 @@ class KWinners(tf.keras.layers.Layer):
             ax = tf.range(0,x.shape.ndims-1)
 
         s = tf.reduce_sum(x, axis=ax)/scaleFactor
-        self.dutyCycle = self.dutyCycle +s
-        self.dutyCycle = tf.divide(self.dutyCycle, period)
+        dutyCycle = dutyCycle +s
+        self.dutyCycle.assign(tf.divide(dutyCycle, period))
 
 
 

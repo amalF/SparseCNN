@@ -8,14 +8,8 @@ class SparseConv2D(tf.keras.layers.Conv2D):
         super(SparseConv2D, self).__init__(filters, kernel_size, strides=strides,
                 padding= padding, dilation_rate=dilation_rate, use_bias=use_bias)
 
-        assert 0 < weightSparcity < 1
+        assert weightSparcity >0.0
         self.sparsity = weightSparcity
-
-
-
-    #def build(self, input_shape):
-    #    super(SparseConv2D, self).build(input_shape)
-    #    #self.updateWeights()
 
     def updateWeights(self):
         K = self.kernel
@@ -31,9 +25,9 @@ class SparseConv2D(tf.keras.layers.Conv2D):
         w = np.ones(K.shape).reshape(-1, out_channels)
         w[inputIndices, outputIndices] = 0.0
         w = w.reshape(K.shape)
-        self.kernel = K*w
+        self.kernel.assign(K*w)
 
-    def call(self, inputs, training=True):
+    def call(self, inputs, training=True, mask=None):
         if training:
             self.updateWeights()
         return super(SparseConv2D, self).call(inputs)
@@ -42,15 +36,8 @@ class SparseConv2D(tf.keras.layers.Conv2D):
 class SparseDense(tf.keras.layers.Dense):
     def __init__(self, units, weightSparcity=0.5, use_bias=True):
         super(SparseDense, self).__init__(units, use_bias=use_bias)
-        assert 0<weightSparcity<1
+        assert weightSparcity>0.0
         self.sparsity = weightSparcity
-
-    #def build(self, input_shape):
-    #    if not self.module.built:
-    #        self.module.build(input_shape)
-
-    #    self.updateWeights()
-    #    super(SparseWeights1D, self).build(input_shape)
 
     def updateWeights(self):
         K = self.kernel
@@ -63,7 +50,8 @@ class SparseDense(tf.keras.layers.Dense):
         w = np.ones(K.shape)
         w[inputIndices, outputIndices] = 0.0
 
-        self.kernel = K*w
+        self.kernel.assign(self.kernel*w)
+
 
     def call(self, inputs, training=True):
         if training:

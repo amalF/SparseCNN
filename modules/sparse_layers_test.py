@@ -15,7 +15,7 @@ class SparseConv2DTest(tf.test.TestCase):
         }
 
         with self.cached_session(use_gpu=True):
-            x = tf.Variable(np.ones((1,2,2,16)), dtype=tf.float32)
+            x = tf.Variable(tf.random.uniform((1,2,2,16)), dtype=tf.float32)
             conv = SparseConv2D(**kwargs)
             out = conv(x)
             self.assertAlmostEqual(round(tf.math.zero_fraction(conv.kernel).numpy(),1), 0.2)
@@ -25,7 +25,7 @@ class SparseConv2DTest(tf.test.TestCase):
 
         with self.cached_session(use_gpu=True):
 
-            x = tf.Variable(np.random.randint(low=0, high=7, size=(10,10)), dtype='float32')
+            x = tf.Variable(np.random.uniform(size=(10,10)), dtype='float32')
 
             linear = SparseDense(5)
             out = linear(x)
